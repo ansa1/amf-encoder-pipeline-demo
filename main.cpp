@@ -30,7 +30,7 @@
 #include "DDAImpl.h"
 #include "Preproc.h"
 
-//#include "AMFEncoder.h"
+#include "AMFEncoder.h"
 
 //DXGI
 #include <dxgi.h>
@@ -88,11 +88,10 @@ private:
     /// Failure count from Capture API
     UINT failCount = 0;
     /// Video output file name
-    const char fnameBase[64] = "DDATest_%d.h264";
-    AMFContextPtr m_context = nullptr;
-    AMFComponentPtr m_encoder = nullptr;
-    AMFComponentPtr m_converter = nullptr;
+    const char* fileNameOut = "output1.h264";
+    FILE* m_file = nullptr;
     //FILE* m_file;
+    /*
     AMF_RESULT InitEncoder()
     {
         assert(m_context);
@@ -196,7 +195,7 @@ private:
         wchar_t text[100];
         _snwprintf(text, ARRAYSIZE(text), L"encode %i", count);
         OutputDebugString(text);
-        */
+        
         AMFBufferPtr buffer;
         res = encoded->QueryInterface(AMFBuffer::IID(), (void**)&buffer);
         AMF_RETURN_IF_FAILED(res, L"encoded->QueryInterface() failed");
@@ -214,8 +213,9 @@ private:
 
         return AMF_OK;
     }
+    */
 private:
-    AMF_RESULT InitConverter()
+    /*AMF_RESULT InitConverter()
     {
         assert(m_context);
 
@@ -243,7 +243,7 @@ private:
         res = m_converter->Init(AMF_SURFACE_BGRA, width, height);
         AMF_RETURN_IF_FAILED(res, L"converter->Init() failed");
         return res;
-    }
+    }*/
 
     /// Initialize DXGI pipeline
     HRESULT InitDXGI()
@@ -300,7 +300,7 @@ private:
     HRESULT InitEnc()
     {
         assert(pCtx);
-        AMF_RESULT res = InitClassEnc();
+        AMFEncoder::GetInstance()->InitEnc(pD3DDev);
         //assert(res);
         return S_OK;
     }
@@ -321,13 +321,14 @@ private:
     /// Initialize Video output file
     HRESULT InitOutFile()
     {
+        /*
         if (!fp)
         {
             char fname[64] = { 0 };
             sprintf_s(fname, (const char *)fnameBase, failCount);
             errno_t err = fopen_s(&fp, fname, "wb");
             returnIfError(err);
-        }
+        }*/
         return S_OK;
     }
 
@@ -386,12 +387,28 @@ public:
         return hr;
     }
 
-    /// Encode the captured frame using NVENCODEAPI
+    /// Encode the captured frame using AMF
     HRESULT Encode()
     {
-        AMF_RESULT hr = ProcessFrame();
-        if (hr != AMF_OK)
-            printf("ProcessFrame() failed: %d\n", hr);
+        unsigned long netBufferSize = 4 * 1024 * 1024;
+        uint8_t* netBuffer = new uint8_t[netBufferSize]; // 2MB
+        unsigned long bufferSize = AMFEncoder::GetInstance()->ProcessFrame(&pDupTex2D, netBuffer, netBufferSize);
+        if (bufferSize == -1)
+            printf("ProcessFrame() failed\n");
+        else {
+            if (!m_file)
+                fopen_s(&m_file, fileNameOut, "wb");
+            else
+            {
+                fwrite(netBuffer, 1, bufferSize, m_file);
+            }
+        }
+        return S_OK;
+    }
+
+    HRESULT closeFile() {
+        if (m_file)
+            fclose(m_file);
         return S_OK;
     }
 
@@ -445,7 +462,7 @@ int Grab60FPS(int nFrames)
         QueryPerformanceCounter(&start);
         /// Get a frame from DDA
         hr = Demo.Capture(wait);
-        // after capture() pDup2D texture has new frame
+        // after capture() pDup2D texture has new frame - DONE
         if (hr == DXGI_ERROR_WAIT_TIMEOUT) 
         {
             /// retry if there was no new update to the screen during our specific timeout interval
@@ -458,7 +475,7 @@ int Grab60FPS(int nFrames)
             if (FAILED(hr))
             {
                 /// Re-try with a new DDA object
-                printf("Captrue failed with error 0x%08x. Re-create DDA and try again.\n", hr);
+                printf("Capture failed with error 0x%08x. Re-create DDA and try again.\n", hr);
                 Demo.Cleanup(); // TODO
                 hr = Demo.Init();
                 if (FAILED(hr))
@@ -483,6 +500,7 @@ int Grab60FPS(int nFrames)
             }
             hr = Demo.Encode();
             // TODO: Encode() should encode pDup2D and write raw .h264 data to buffer
+            // Encode() call ProcessFrame() function that returns buffer with .h264 encoded frame
             if (FAILED(hr))
             {
                 printf("Encode failed with error 0x%08x\n", hr);
@@ -492,6 +510,7 @@ int Grab60FPS(int nFrames)
         }
     } while (capturedFrames <= nFrames);
 
+    Demo.closeFile();
     return 0;
 }
 

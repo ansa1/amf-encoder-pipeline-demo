@@ -13,6 +13,9 @@
 #include "amf/amf/public/common/AMFSTL.h"
 #include "amf/amf/public/common/TraceAdapter.h"
 
+#include <thread>
+#include <mutex>
+
 using namespace amf;
 
 //
@@ -20,12 +23,22 @@ using namespace amf;
 //
 class AMFEncoder
 {
+protected:
+    static std::mutex __mutex;
 public:
     AMFEncoder();
     ~AMFEncoder();
 
-    AMF_RESULT InitEnc(ID3D11DeviceContext* pCtx);
-    AMF_RESULT ProcessFrame(ID3D11Texture2D* pDupTex2D);
+    AMF_RESULT InitEnc(ID3D11Device* pD3DDev);
+    unsigned long ProcessFrame(ID3D11Texture2D** pDupTex2D, uint8_t* buf, unsigned long bufsize);
+    unsigned long AMFEncoder::CopyToBuffer(uint8_t* buf, unsigned long bufsize);
+
+    static AMFEncoder* GetInstance() 
+    {
+        std::lock_guard<std::mutex> lock(__mutex);
+        static AMFEncoder* __instance = new AMFEncoder();
+        return __instance;
+    }
 
 private:
     AMFContextPtr m_context;
